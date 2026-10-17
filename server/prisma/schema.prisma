@@ -1,0 +1,264 @@
+// SQLite for local development. For production switch provider to "mysql" or "postgresql"
+// and update DATABASE_URL. Enums are stored as strings so the schema works on all three.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------- Admin ----------------
+model AdminUser {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("STAFF") // OWNER | STAFF | AGENT
+  createdAt    DateTime @default(now())
+}
+
+// ---------------- Catalog ----------------
+model Category {
+  id        Int       @id @default(autoincrement())
+  name      String
+  slug      String    @unique
+  sortOrder Int       @default(0)
+  active    Boolean   @default(true)
+  products  Product[]
+}
+
+model Product {
+  id            Int            @id @default(autoincrement())
+  code          String?        @unique // stable product code used by Excel/CSV import (e.g. ROSE-LAWN)
+  categoryId    Int
+  category      Category       @relation(fields: [categoryId], references: [id])
+  title         String
+  description   String         @default("")
+  fabric        String         @default("")
+  piecesCount   Int            @default(3)
+  stitchingType String         @default("UNSTITCHED") // STITCHED | UNSTITCHED
+  occasion      String         @default("")
+  tags          String         @default("") // comma separated search keywords
+  status        String         @default("ACTIVE") // ACTIVE | DRAFT | HIDDEN
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  images        ProductImage[]
+  variants      Variant[]
+}
+
+model ProductImage {
+  id        Int     @id @default(autoincrement())
+  productId Int
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  sourceUrl String  @default("") // original URL when imported from a link (avoids re-downloading)
+  color     String? // null = applies to all colours; otherwise shown when that colour is chosen
+  position  Int     @default(0)
+}
+
+model Variant {
+  id        Int                 @id @default(autoincrement())
+  productId Int
+  product   Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku       String              @unique
+  color     String
+  size      String? // null for unstitched
+  price     Int // in whole currency units (PKR)
+  salePrice Int?
+  stock     Int                 @default(0)
+  active    Boolean             @default(true)
+  archived  Boolean             @default(false) // "removed" in admin but kept for stock history
+  cartItems CartItem[]
+  movements InventoryMovement[]
+}
+
+model InventoryMovement {
+  id        Int      @id @default(autoincrement())
+  variantId Int
+  variant   Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  delta     Int
+  reason    String // ORDER | CANCEL | ADJUST | EDIT | IMPORT | COUNT
+  note      String   @default("")
+  by        String   @default("") // admin name, or "bot"
+  stockAfter Int?
+  orderId   Int?
+  createdAt DateTime @default(now())
+
+  @@index([variantId, createdAt])
+}
+
+// ---------------- Customers & conversations ----------------
+model Customer {
+  id           Int           @id @default(autoincrement())
+  waId         String        @unique // WhatsApp id (phone). Simulator ids start with "sim:"
+  name         String?
+  language     String        @default("en")
+  createdAt    DateTime      @default(now())
+  conversation Conversation?
+  cartItems    CartItem[]
+  orders       Order[]
+}
+
+model Conversation {
+  id            Int            @id @default(autoincrement())
+  customerId    Int            @unique
+  customer      Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  state         String         @default("WELCOME")
+  contextJson   String         @default("{}")
+  botPaused     Boolean        @default(false) // true = human agent has taken over
+  needsHuman    Boolean        @default(false)
+  assignedTo    String?
+  lastInboundAt DateTime?
+  turn          Int            @default(0)
+  updatedAt     DateTime       @updatedAt
+  messages      Message[]
+  menus         OutboundMenu[]
+}
+
+// Every interactive message we send is recorded with the option IDs it offered,
+// so a tap on an old/stale button can be detected and rejected.
+model OutboundMenu {
+  id             Int          @id @default(autoincrement())
+  conversationId Int
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  turn           Int
+  optionIds      String // JSON array
+  payloadJson    String // the Outbound message, so it can be resent
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, turn])
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  conversationId Int
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  waMessageId    String?      @unique
+  direction      String // IN | OUT
+  sender         String       @default("customer") // customer | bot | agent | ai
+  type           String // text | interactive | image | reply
+  body           String // human readable summary
+  payloadJson    String       @default("{}")
+  status         String       @default("received") // received | queued | sent | delivered | read | failed
+  error          String?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+// ---------------- Cart & orders ----------------
+model CartItem {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  variantId  Int
+  variant    Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  quantity   Int
+  createdAt  DateTime @default(now())
+
+  @@unique([customerId, variantId])
+}
+
+model Order {
+  id            Int         @id @default(autoincrement())
+  orderNo       String      @unique
+  customerId    Int
+  customer      Customer    @relation(fields: [customerId], references: [id])
+  status        String      @default("PENDING") // PENDING | CONFIRMED | PROCESSING | SHIPPED | DELIVERED | CANCELLED
+  paymentMethod String      @default("COD")
+  paymentStatus String      @default("UNPAID") // UNPAID | PAID | REFUNDED
+  subtotal      Int
+  shippingFee   Int
+  discount      Int         @default(0)
+  total         Int
+  name          String
+  phone         String
+  city          String
+  address       String
+  notes         String      @default("")
+  courier       String      @default("")
+  trackingNo    String      @default("")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  items         OrderItem[]
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   Int
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId Int?
+  sku       String
+  title     String
+  color     String
+  size      String?
+  unitPrice Int
+  quantity  Int
+}
+
+// ---------------- Bot configuration (editable from admin) ----------------
+
+// Editable message texts, e.g. "welcome", "handoff", "order_confirmed".
+model BotText {
+  key         String @id
+  text        String
+  description String @default("")
+}
+
+// Items shown on the main/welcome menu. <=3 active items => reply buttons, otherwise a list.
+model MainMenuItem {
+  id          Int     @id @default(autoincrement())
+  label       String // max 20 chars for buttons / 24 for list rows
+  description String  @default("") // list rows only, max 72 chars
+  action      String // BROWSE | SEARCH | CART | TRACK | HUMAN | FAQ | MENU:<customMenuId> | TEXT:<text>
+  sortOrder   Int     @default(0)
+  active      Boolean @default(true)
+}
+
+// Admin-defined menus (FAQ, size guide, offers ...).
+model CustomMenu {
+  id         Int              @id @default(autoincrement())
+  title      String
+  body       String
+  buttonText String           @default("View options")
+  active     Boolean          @default(true)
+  items      CustomMenuItem[]
+}
+
+model CustomMenuItem {
+  id          Int        @id @default(autoincrement())
+  menuId      Int
+  menu        CustomMenu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  label       String
+  description String     @default("")
+  action      String // same action format as MainMenuItem
+  sortOrder   Int        @default(0)
+}
+
+// Keyword auto replies, checked before the AI.
+model AutoReply {
+  id        Int     @id @default(autoincrement())
+  keywords  String // comma separated
+  matchType String  @default("CONTAINS") // CONTAINS | EXACT
+  response  String
+  action    String  @default("") // optional follow-up action, same format as menu actions
+  priority  Int     @default(0)
+  active    Boolean @default(true)
+}
+
+// Knowledge base the AI may quote from (policies, size chart, delivery ...).
+model KnowledgeEntry {
+  id       Int     @id @default(autoincrement())
+  question String
+  answer   String
+  tags     String  @default("")
+  active   Boolean @default(true)
+}
+
+model Setting {
+  key   String @id
+  value String
+}

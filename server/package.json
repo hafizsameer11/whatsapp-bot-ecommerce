@@ -1,0 +1,45 @@
+{
+  "name": "server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "demo:add": "tsx prisma/seed.ts --demo",
+    "demo:clear": "tsx prisma/seed.ts --clear-demo",
+    "db:studio": "prisma studio",
+    "test:flow": "tsx src/scripts/flowTest.ts",
+    "test:catalog": "tsx src/scripts/catalogTest.ts",
+    "test": "tsx src/scripts/flowTest.ts && tsx src/scripts/catalogTest.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1152.0",
+    "@prisma/client": "6.19.3",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "heic-convert": "^2.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/heic-convert": "^2.1.1",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^22.10.0",
+    "prisma": "6.19.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

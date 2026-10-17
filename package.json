@@ -1,0 +1,16 @@
+{
+  "name": "whatsapp-commerce-bot",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["server", "admin"],
+  "scripts": {
+    "setup": "npm install && npm run db:push -w server && npm run db:seed -w server",
+    "dev": "concurrently -n server,admin -c blue,magenta \"npm run dev -w server\" \"npm run dev -w admin\"",
+    "build": "npm run build -w admin && npm run build -w server",
+    "start": "npm run start -w server",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w admin"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
